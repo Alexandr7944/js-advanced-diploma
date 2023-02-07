@@ -172,6 +172,9 @@ body {
   position: absolute;
   z-index: 99;
 }
+.character:hover {
+  scale: 1.2;
+}
 
 .character.generic {
   background: url('../img/characters/generic.png');

@@ -1,6 +1,12 @@
 export default class GameState {
-  static from(object) {
+  // constructor() {
+  //   this.state = 'left';
+  //   this.from = this.from.bind(this);
+  // }
+
+  static from(value) {
+    if (value) this.state = value;
+    return this.state;
     // TODO: create object
-    return null;
   }
 }
