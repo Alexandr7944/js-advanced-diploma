@@ -55,44 +55,40 @@ export default class GameController {
   }
 
   onCellClick(index) {
-    this.setSelectedHero(index);
-    if (this.selectedHero
-      && this.validPosition(index)
-      && !this.cellChild) {
-      this.teamPosition.forEach((item) => {
-        if (item === this.selectedHero) {
-          // eslint-disable-next-line no-param-reassign
-          item.position = index;
-        }
-      });
-      this.reset();
-    }
-    if (this.selectedHero
-      && this.validAttacka(index)
-      && this.cellChild
-      && (this.cellChild.className.includes('undead')
-      || this.cellChild.className.includes('daemon')
-      || this.cellChild.className.includes('vampire'))) {
-      const attacker = this.selectedHero.character;
-      const target = this.teamPosition.find((hero) => hero.position === index);
+    if (GameState.from() === 'left' && this.cellChild) this.setSelectedHero(index);
 
-      const attack = Math.max(attacker.attack - target.character.defence, attacker.attack * 0.1);
-      target.character.health -= attack;
+    if (this.selectedHero) {
+      if (this.cellChild) {
+        if (this.validAttacka(index)
+          && (this.cellChild.className.includes('undead')
+          || this.cellChild.className.includes('daemon')
+          || this.cellChild.className.includes('vampire'))) {
+          const attacker = this.selectedHero.character;
+          const target = this.teamPosition.find((hero) => hero.position === index);
+          const attack = Math.max(
+            attacker.attack - target.character.defence,
+            attacker.attack * 0.1,
+          );
+          target.character.health -= attack;
 
-      if (target.character.health <= 0) {
-        this.teamPosition = this.teamPosition.filter((hero) => hero !== target);
-      }
-
-      this.gamePlay.showDamage(index, `- ${attack}`)
-        .then(() => {
-          if (!this.teamPosition.filter((item) => item.character.type === 'undead'
-            || item.character.type === 'daemon'
-            || item.character.type === 'vampire')) {
-            this.nextLevel();
-          } else {
+          this.gamePlay.showDamage(index, `- ${attack}`).then(() => {
             this.reset();
-          }
-        });
+            if (target.character.health <= 0) {
+              this.teamPosition = this.teamPosition.filter((hero) => hero !== target);
+              this.gamePlay.redrawPositions(this.teamPosition);
+              if (!this.teamPosition.some((item) => item.character.type === 'undead'
+                    || item.character.type === 'daemon'
+                    || item.character.type === 'vampire')) {
+                this.nextLevel();
+              }
+            }
+          });
+        }
+      } else if (this.validPosition(index)) {
+        const indexHero = this.teamPosition.indexOf(this.selectedHero);
+        this.teamPosition[indexHero].position = index;
+        this.reset();
+      }
     }
   }
 
@@ -148,13 +144,15 @@ export default class GameController {
   }
 
   reset() {
-    this.selectedHero = null;
-    this.gamePlay.setCursor('auto');
-    // GameState.from('right');
-    const select = this.gamePlay.cells
-      .findIndex((item) => item.className.includes('selected'));
-    this.gamePlay.deselectCell(select);
     this.gamePlay.redrawPositions(this.teamPosition);
+    this.selectedHero = null;
+    // this.gamePlay.setCursor('auto');
+    // GameState.from('right');
+    this.gamePlay.cells.forEach((item, index) => {
+      if (item.className.includes('selected')) {
+        this.gamePlay.deselectCell(index);
+      }
+    });
   }
 
   // повышение уровня
@@ -240,26 +238,17 @@ export default class GameController {
 
   // Выбор героя по индексу, сообщение об ошибке
   setSelectedHero(index) {
-    if (GameState.from() === 'left') {
-      const { cells } = this.gamePlay;
-      const select = cells.findIndex((item) => item.className.includes('selected'));
-      if (select !== -1) this.gamePlay.deselectCell(select);
+    const { cells } = this.gamePlay;
+    const select = cells.findIndex((item) => item.className.includes('selected'));
+    if (select !== -1) this.gamePlay.deselectCell(select);
 
-      if (this.cellChild) {
-        if (this.cellChild.className.includes('bowman')
-          || this.cellChild.className.includes('swordsman')
-          || this.cellChild.className.includes('magician')) {
-          this.gamePlay.selectCell(index);
-          this.gamePlay.setCursor('pointer');
-          this.selectedHero = this.searchHero(index);
-        }
-        if (!this.selectedHero
-          && (this.cellChild.className.includes('undead')
-          || this.cellChild.className.includes('daemon')
-          || this.cellChild.className.includes('vampire'))) {
-          GamePlay.showError('Выберете игрока из своей комманды');
-        }
-      }
+    if (this.cellChild.className.includes('bowman')
+      || this.cellChild.className.includes('swordsman')
+      || this.cellChild.className.includes('magician')) {
+      this.gamePlay.selectCell(index);
+      this.selectedHero = this.searchHero(index);
+    } else if (!this.selectedHero) {
+      GamePlay.showError('Выберете игрока из своей комманды');
     }
   }
 
