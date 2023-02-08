@@ -123,7 +123,10 @@ export default class GameController {
           this.gamePlay.selectCell(index, 'red');
           this.gamePlay.setCursor('crosshair');
         }
-      } else {
+      } else if (!this.validPosition(index)
+        && !(this.cellChild.className.includes('undead')
+          || this.cellChild.className.includes('daemon')
+          || this.cellChild.className.includes('vampire'))) {
         this.gamePlay.setCursor('not-allowed');
       }
       if (this.cellChild
