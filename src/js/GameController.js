@@ -109,31 +109,25 @@ export default class GameController {
         }
       });
     }
+
     if (GameState.from() === 'left' && this.selectedHero) {
-      if (this.validPosition(index)) {
-        if (!this.cellChild) {
+      if (!this.cellChild) {
+        if (this.validPosition(index)) {
           this.gamePlay.selectCell(index, 'green');
           this.gamePlay.setCursor('pointer');
+        } else {
+          this.gamePlay.setCursor('not-allowed');
         }
-        if (this.cellChild
-          && this.validAttacka(index)
-          && (this.cellChild.className.includes('undead')
-          || this.cellChild.className.includes('daemon')
-          || this.cellChild.className.includes('vampire'))) {
+      } else if (this.cellChild.className.includes('undead')
+        || this.cellChild.className.includes('daemon')
+        || this.cellChild.className.includes('vampire')) {
+        if (this.validAttacka(index)) {
           this.gamePlay.selectCell(index, 'red');
           this.gamePlay.setCursor('crosshair');
+        } else {
+          this.gamePlay.setCursor('not-allowed');
         }
-      } else if (!this.validPosition(index)
-        && !(this.cellChild.className.includes('undead')
-          || this.cellChild.className.includes('daemon')
-          || this.cellChild.className.includes('vampire'))) {
-        this.gamePlay.setCursor('not-allowed');
-      }
-      if (this.cellChild
-        && (this.cellChild.className.includes('bowman')
-        || this.cellChild.className.includes('swordsman')
-        || this.cellChild.className.includes('magician'))) {
-        this.gamePlay.hideCellTooltip(index);
+      } else {
         this.gamePlay.setCursor('pointer');
       }
     }
