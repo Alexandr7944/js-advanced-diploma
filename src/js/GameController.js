@@ -1,68 +1,46 @@
+/* eslint-disable no-param-reassign */
 import themes from './themes';
-import Bowman from './characters/Bowman';
-import Swordsman from './characters/Swordsman';
-import Magician from './characters/Magician';
-import Vampire from './characters/Vampire';
-import Undead from './characters/Undead';
-import Daemon from './characters/Daemon';
-import PositionedCharacter from './PositionedCharacter';
-import { generateTeam } from './generators';
 import GamePlay from './GamePlay';
 import GameState from './GameState';
+import GameTeam from './GameTeam';
 
 export default class GameController {
   constructor(gamePlay, stateService) {
     this.gamePlay = gamePlay;
     this.stateService = stateService;
-    this.maxLevel = 1;
+    this.gameState = new GameState();
     this.teamPosition = null;
     this.selectedHero = null;
     this.cellChild = null;
+    this.teamLeft = [];
   }
 
   init() {
     // TODO: add event listeners to gamePlay events
-    this.gamePlay.drawUi(themes.prairie);
-    GameState.from('left');
-    const teamLeft = generateTeam([Bowman, Swordsman, Magician], this.maxLevel, 3);
-    const teamRight = generateTeam([Vampire, Undead, Daemon], this.maxLevel, 3);
-    const teamLeftPosition = this.teamPositionedCharacter(teamLeft.characters);
-    const teamRightPosition = this.teamPositionedCharacter(teamRight.characters);
-    this.teamPosition = teamLeftPosition.concat(teamRightPosition);
+    const themesArray = [themes.prairie, themes.desert, themes.arctic, themes.mountain];
+    this.gamePlay.drawUi(themesArray[this.gameState.maxLevel - 1]);
+    this.gameState.state = 'left';
+    this.teamPosition = new GameTeam(
+      this.gameState.maxLevel,
+      this.gamePlay.boardSize,
+    ).newTeams(this.teamLeft);
+
     this.gamePlay.redrawPositions(this.teamPosition);
-    this.listener();
-  }
 
-  listener() {
-    this.listenerCellEnter();
-    this.listenerCellClick();
-    this.listenerCellLeave();
-  }
-
-  listenerCellClick() {
     this.onCellClick = this.onCellClick.bind(this);
     this.gamePlay.addCellClickListener(this.onCellClick);
-  }
-
-  listenerCellEnter() {
     this.onCellEnter = this.onCellEnter.bind(this);
     this.gamePlay.addCellEnterListener(this.onCellEnter);
-  }
-
-  listenerCellLeave() {
     this.onCellLeave = this.onCellLeave.bind(this);
     this.gamePlay.addCellLeaveListener(this.onCellLeave);
   }
 
   onCellClick(index) {
-    if (GameState.from() === 'left' && this.cellChild) this.setSelectedHero(index);
-
+    if (this.gameState.state === 'left' && this.cellChild) this.setSelectedHero(index);
     if (this.selectedHero) {
       if (this.cellChild) {
         if (this.validAttacka(index)
-          && (this.cellChild.className.includes('undead')
-          || this.cellChild.className.includes('daemon')
-          || this.cellChild.className.includes('vampire'))) {
+          && (this.positionRight().includes(index))) {
           const attacker = this.selectedHero.character;
           const target = this.teamPosition.find((hero) => hero.position === index);
           const attack = Math.max(
@@ -72,16 +50,14 @@ export default class GameController {
           target.character.health -= attack;
 
           this.gamePlay.showDamage(index, `- ${attack}`).then(() => {
-            this.reset();
             if (target.character.health <= 0) {
               this.teamPosition = this.teamPosition.filter((hero) => hero !== target);
-              this.gamePlay.redrawPositions(this.teamPosition);
-              if (!this.teamPosition.some((item) => item.character.type === 'undead'
-                    || item.character.type === 'daemon'
-                    || item.character.type === 'vampire')) {
-                this.nextLevel();
+              if (!this.teamPosition.some((item) => item.character.team === 'right')) {
+                return this.nextLevel();
               }
+              return this.reset();
             }
+            return this.reset();
           });
         }
       } else if (this.validPosition(index)) {
@@ -106,7 +82,7 @@ export default class GameController {
       });
     }
 
-    if (GameState.from() === 'left' && this.selectedHero) {
+    if (this.gameState.state === 'left' && this.selectedHero) {
       if (!this.cellChild) {
         if (this.validPosition(index)) {
           this.gamePlay.selectCell(index, 'green');
@@ -114,9 +90,7 @@ export default class GameController {
         } else {
           this.gamePlay.setCursor('not-allowed');
         }
-      } else if (this.cellChild.className.includes('undead')
-        || this.cellChild.className.includes('daemon')
-        || this.cellChild.className.includes('vampire')) {
+      } else if (this.positionRight().includes(index)) {
         if (this.validAttacka(index)) {
           this.gamePlay.selectCell(index, 'red');
           this.gamePlay.setCursor('crosshair');
@@ -132,9 +106,7 @@ export default class GameController {
   onCellLeave(index) {
     if (this.cellChild) {
       this.gamePlay.hideCellTooltip(index);
-      if (this.cellChild.className.includes('undead')
-      || this.cellChild.className.includes('daemon')
-      || this.cellChild.className.includes('vampire')) {
+      if (this.positionRight().includes(index)) {
         this.gamePlay.deselectCell(index);
       }
     } else {
@@ -144,88 +116,65 @@ export default class GameController {
   }
 
   reset() {
+    if (this.gameState.state === 'right') {
+      this.gameState.state = 'left';
+    } else {
+      this.gamePlay.cells.forEach((item, index) => {
+        if (item.className.includes('selected')) {
+          this.gamePlay.deselectCell(index);
+        }
+      });
+      this.selectedHero = null;
+      this.gameState.state = 'right';
+      this.attackRight();
+    }
     this.gamePlay.redrawPositions(this.teamPosition);
-    this.selectedHero = null;
-    // this.gamePlay.setCursor('auto');
-    // GameState.from('right');
-    this.gamePlay.cells.forEach((item, index) => {
-      if (item.className.includes('selected')) {
-        this.gamePlay.deselectCell(index);
-      }
-    });
   }
 
   // повышение уровня
   nextLevel() {
-    this.maxLevel += 1;
+    this.gameState.maxLevel += 1;
+    this.teamLeft = [];
+    this.teamPosition
+      .filter((item) => item.character.team === 'left')
+      .forEach((item) => {
+        item.character.level += 1;
+        item.character.calcState();
+        this.teamLeft.push(item.character);
+      });
     this.init();
   }
 
-  // определяет дальность перемещения для каждого героя
-  // вызывает requirementPosition с данными героя
-  validPosition(index) {
-    if (this.selectedHero.character.type === 'magician'
-      || this.selectedHero.character.type === 'daemon') {
-      return this.requirementPosition(index, 1);
-    }
-    if (this.selectedHero.character.type === 'bowman'
-      || this.selectedHero.character.type === 'vampire') {
-      return this.requirementPosition(index, 2);
-    }
-    if (this.selectedHero.character.type === 'swordsman'
-      || this.selectedHero.character.type === 'undead') {
-      return this.requirementPosition(index, 4);
-    }
-    return false;
-  }
-
-  // определяет дальность атаки для каждого героя
-  // вызывает requirementAttacka с данными героя
-  validAttacka(index) {
-    if (this.selectedHero.character.type === 'magician'
-      || this.selectedHero.character.type === 'daemon') {
-      return this.requirementAttacka(index, 4);
-    }
-    if (this.selectedHero.character.type === 'bowman'
-      || this.selectedHero.character.type === 'vampire') {
-      return this.requirementAttacka(index, 2);
-    }
-    if (this.selectedHero.character.type === 'swordsman'
-      || this.selectedHero.character.type === 'undead') {
-      return this.requirementAttacka(index, 1);
-    }
-    return false;
-  }
-
   // условие для проведения перемещения
-  requirementPosition(index, n) {
-    const { position } = this.selectedHero;
+  validPosition(index) {
+    const { position, character } = this.selectedHero;
     const lengthBoard = this.gamePlay.boardSize;
 
     const x1 = Math.floor(position / lengthBoard);
     const x2 = Math.floor(index / lengthBoard);
     const y1 = position % lengthBoard;
     const y2 = index % lengthBoard;
-    if ((x1 === x2 && Math.abs(y1 - y2) <= n)
-        || (y1 === y2 && Math.abs(x1 - x2) <= n)
+    if ((x1 === x2 && Math.abs(y1 - y2) <= character.maxStep)
+        || (y1 === y2 && Math.abs(x1 - x2) <= character.maxStep)
         || (Math.abs(y1 - y2) === Math.abs(x1 - x2)
-        && Math.abs(x1 - x2) <= n)) {
+        && Math.abs(x1 - x2) <= character.maxStep)) {
       return true;
     }
     return false;
   }
 
   // условие для проведения атаки
-  requirementAttacka(index, n) {
-    const { position } = this.selectedHero;
+  validAttacka(index, hero = this.selectedHero) {
+    const { position } = hero;
+    const { maxAttackRange } = hero.character;
     const lengthBoard = this.gamePlay.boardSize;
 
     const x1 = Math.floor(position / lengthBoard);
     const x2 = Math.floor(index / lengthBoard);
     const y1 = position % lengthBoard;
     const y2 = index % lengthBoard;
-    if ((x1 + n >= x2 && x1 - n <= x2)
-        && (y1 + n >= y2 && y1 - n <= y2)) {
+    if ((x1 + maxAttackRange >= x2 && x1 - maxAttackRange <= x2)
+        && (y1 + maxAttackRange >= y2 && y1 - maxAttackRange <= y2)) {
       return true;
     }
     return false;
@@ -240,11 +189,9 @@ export default class GameController {
   setSelectedHero(index) {
     const { cells } = this.gamePlay;
     const select = cells.findIndex((item) => item.className.includes('selected'));
-    if (select !== -1) this.gamePlay.deselectCell(select);
+    if (select > -1) this.gamePlay.deselectCell(select);
 
-    if (this.cellChild.className.includes('bowman')
-      || this.cellChild.className.includes('swordsman')
-      || this.cellChild.className.includes('magician')) {
+    if (this.positionLeft().includes(index)) {
       this.gamePlay.selectCell(index);
       this.selectedHero = this.searchHero(index);
     } else if (!this.selectedHero) {
@@ -252,35 +199,144 @@ export default class GameController {
     }
   }
 
-  // метод принимает комманду и создает объект класса PositionedCharacter
-  teamPositionedCharacter(team) {
-    const cache = [];
-
-    const validPosition = (character) => {
-      const position = this.generatorPosition(character);
-      if (cache.indexOf(position) !== -1) {
-        return validPosition(character);
+  positionLeft() {
+    const result = [];
+    this.teamPosition.forEach((item) => {
+      if (item.character.team === 'left') {
+        result.push(item.position);
       }
-      cache.push(position);
-      return position;
-    };
-
-    return team.map((item) => {
-      const position = validPosition(item.type);
-      return new PositionedCharacter(item, position);
     });
+    return result;
   }
 
-  // принимает персонажа и генерирует его позицию
-  generatorPosition(character) {
-    const bordEl = Math.floor(Math.random() * this.gamePlay.boardSize * 2);
-    const positionLeft = Math.floor(bordEl / 2) * this.gamePlay.boardSize + (bordEl % 2);
-    const positionRight = positionLeft + this.gamePlay.boardSize - 2;
+  positionRight() {
+    const result = [];
+    this.teamPosition.forEach((item) => {
+      if (item.character.team === 'right') {
+        result.push(item.position);
+      }
+    });
+    return result;
+  }
 
-    return (character === 'bowman'
-      || character === 'swordsman'
-      || character === 'magician')
-      ? positionLeft
-      : positionRight;
+  // логика атаки комманды противника (не работает Promise)
+  attackRight() {
+    const teamLeft = this.teamPosition.filter((item) => item.character.team === 'left')
+      .sort((a, b) => b.character.attack - a.character.attack);
+    const teamRight = this.teamPosition.filter((item) => item.character.team === 'right')
+      .sort((a, b) => b.character.attack - a.character.attack);
+    let fight = [];
+
+    for (let i = 0; i < teamRight.length; i += 1) {
+      for (let j = 0; j < teamLeft.length; j += 1) {
+        if (this.validAttacka(teamLeft[j].position, teamRight[i])) {
+          fight = [teamRight[i], teamLeft[j]];
+          break;
+        }
+      }
+    }
+
+    if (fight.length === 2) {
+      const [attacker, target] = fight;
+      const attack = Math.max(
+        attacker.character.attack - target.character.defence,
+        attacker.character.attack * 0.1,
+      );
+      // eslint-disable-next-line no-param-reassign
+      target.character.health -= attack;
+
+      // this.gamePlay.showDamage(target.position, `- ${attack}`).then(() => {
+      console.log(target.position, `- ${attack}`);
+      this.reset();
+      if (target.character.health <= 0) {
+        this.teamPosition = this.teamPosition.filter((hero) => hero !== target);
+        this.gamePlay.redrawPositions(this.teamPosition);
+        if (!this.teamPosition.some((item) => item.character.team === 'left')) {
+          console.log('Game over!');
+        }
+      }
+    } else {
+      const lengthBoard = this.gamePlay.boardSize;
+      const y1 = Math.floor(teamRight[0].position / lengthBoard);
+      const y2 = Math.floor(teamLeft[0].position / lengthBoard);
+      const x1 = teamRight[0].position % lengthBoard;
+      const x2 = teamLeft[0].position % lengthBoard;
+      const resX = Math.abs(x1 - x2);
+      const resY = Math.abs(y1 - y2);
+      if (resX > resY) {
+        if (x1 > x2) {
+          if (resX > teamRight[0].character.maxStep) {
+            teamRight[0].position -= teamRight[0].character.maxStep;
+          } else if (resX <= teamRight[0].character.maxStep) {
+            teamRight[0].position -= resX - 1;
+          }
+        }
+        if (x1 < x2) {
+          if (resX > teamRight[0].character.maxStep) {
+            teamRight[0].position += teamRight[0].character.maxStep;
+          } else if (resX <= teamRight[0].character.maxStep) {
+            teamRight[0].position += resX - 1;
+          }
+        }
+      } else if (resX < resY) {
+        if (y1 > y2) {
+          if (resY > teamRight[0].character.maxStep) {
+            teamRight[0].position -= teamRight[0].character.maxStep * lengthBoard;
+          } else if (resY <= teamRight[0].character.maxStep) {
+            teamRight[0].position -= (resY - 1) * lengthBoard;
+          }
+        }
+        if (y1 < y2) {
+          if (resY > teamRight[0].character.maxStep) {
+            teamRight[0].position += teamRight[0].character.maxStep * lengthBoard;
+          } else if (resY <= teamRight[0].character.maxStep) {
+            teamRight[0].position += (resY - 1) * lengthBoard;
+          }
+        }
+      } else if (resX === resY) {
+        if (y1 > y2 && x1 > x2) {
+          if (resY > teamRight[0].character.maxStep) {
+            teamRight[0].position = teamRight[0].position
+              - teamRight[0].character.maxStep * lengthBoard
+              - teamRight[0].character.maxStep;
+          } else if (resY <= teamRight[0].character.maxStep) {
+            teamRight[0].position = teamRight[0].position
+              - (resY - 1) * lengthBoard
+              - resY + 1;
+          }
+        } else if (y1 > y2 && x1 < x2) {
+          if (resY > teamRight[0].character.maxStep) {
+            teamRight[0].position = teamRight[0].position
+              - teamRight[0].character.maxStep * lengthBoard
+              + teamRight[0].character.maxStep;
+          } else if (resY <= teamRight[0].character.maxStep) {
+            teamRight[0].position = teamRight[0].position
+              - (resY - 1) * lengthBoard
+              + resY - 1;
+          }
+        } else if (y1 < y2 && x1 > x2) {
+          if (resY > teamRight[0].character.maxStep) {
+            teamRight[0].position = teamRight[0].position
+              + teamRight[0].character.maxStep * lengthBoard
+              - teamRight[0].character.maxStep;
+          } else if (resY <= teamRight[0].character.maxStep) {
+            teamRight[0].position = teamRight[0].position
+              + (resY - 1) * lengthBoard
+              - resY + 1;
+          }
+        } else if (y1 < y2 && x1 < x2) {
+          if (resY > teamRight[0].character.maxStep) {
+            teamRight[0].position = teamRight[0].position
+              + teamRight[0].character.maxStep * lengthBoard
+              + teamRight[0].character.maxStep;
+          } else if (resY <= teamRight[0].character.maxStep) {
+            teamRight[0].position = teamRight[0].position
+              + (resY - 1) * lengthBoard
+              + resY - 1;
+          }
+        }
+      }
+      this.reset();
+    }
   }
 }

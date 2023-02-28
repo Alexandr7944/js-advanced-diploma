@@ -1,12 +1,14 @@
+/* eslint-disable no-underscore-dangle */
 export default class GameState {
-  // constructor() {
-  //   this.state = 'left';
-  //   this.from = this.from.bind(this);
-  // }
+  constructor() {
+    this.maxLevel = 1;
+  }
 
-  static from(value) {
-    if (value) this.state = value;
-    return this.state;
-    // TODO: create object
+  set state(item) {
+    this._state = item;
+  }
+
+  get state() {
+    return this._state;
   }
 }
